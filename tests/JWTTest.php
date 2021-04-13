@@ -2,11 +2,21 @@
 namespace Firebase\JWT;
 
 use ArrayObject;
-use PHPUnit_Framework_TestCase;
+use PHPUnit\Framework\TestCase;
 
-class JWTTest extends PHPUnit_Framework_TestCase
+class JWTTest extends TestCase
 {
-    public static $opensslVerifyReturnValue;
+    /*
+     * For compatibility with PHPUnit 4.8 and PHP < 5.6
+     */
+    public function setExpectedException($exceptionName, $message = '', $code = null)
+    {
+        if (method_exists($this, 'expectException')) {
+            $this->expectException($exceptionName);
+        } else {
+            parent::setExpectedException($exceptionName, $message, $code);
+        }
+    }
 
     public function testEncodeDecode()
     {
@@ -148,7 +158,7 @@ class JWTTest extends PHPUnit_Framework_TestCase
             "nbf"     => time() + 65); // not before too far in future
         $encoded = JWT::encode($payload, 'my_key');
         $this->setExpectedException('Firebase\JWT\BeforeValidException');
-        $decoded = JWT::decode($encoded, 'my_key', array('HS256'));
+        JWT::decode($encoded, 'my_key', array('HS256'));
         JWT::$leeway = 0;
     }
 
@@ -172,7 +182,7 @@ class JWTTest extends PHPUnit_Framework_TestCase
             "iat"     => time() + 65); // issued too far in future
         $encoded = JWT::encode($payload, 'my_key');
         $this->setExpectedException('Firebase\JWT\BeforeValidException');
-        $decoded = JWT::decode($encoded, 'my_key', array('HS256'));
+        JWT::decode($encoded, 'my_key', array('HS256'));
         JWT::$leeway = 0;
     }
 
@@ -183,7 +193,7 @@ class JWTTest extends PHPUnit_Framework_TestCase
             "exp" => time() + 20); // time in the future
         $encoded = JWT::encode($payload, 'my_key');
         $this->setExpectedException('Firebase\JWT\SignatureInvalidException');
-        $decoded = JWT::decode($encoded, 'my_key2', array('HS256'));
+        JWT::decode($encoded, 'my_key2', array('HS256'));
     }
 
     public function testNullKeyFails()
@@ -193,7 +203,7 @@ class JWTTest extends PHPUnit_Framework_TestCase
             "exp" => time() + JWT::$leeway + 20); // time in the future
         $encoded = JWT::encode($payload, 'my_key');
         $this->setExpectedException('InvalidArgumentException');
-        $decoded = JWT::decode($encoded, null, array('HS256'));
+        JWT::decode($encoded, null, array('HS256'));
     }
 
     public function testEmptyKeyFails()
@@ -203,7 +213,7 @@ class JWTTest extends PHPUnit_Framework_TestCase
             "exp" => time() + JWT::$leeway + 20); // time in the future
         $encoded = JWT::encode($payload, 'my_key');
         $this->setExpectedException('InvalidArgumentException');
-        $decoded = JWT::decode($encoded, '', array('HS256'));
+        JWT::decode($encoded, '', array('HS256'));
     }
 
     public function testRSEncodeDecode()
@@ -274,23 +284,19 @@ class JWTTest extends PHPUnit_Framework_TestCase
         JWT::decode($msg, 'secret', array('HS256'));
     }
 
-    public function testVerifyError()
+    /**
+     * @runInSeparateProcess
+     */
+    public function testEncodeAndDecodeEcdsaToken()
     {
-        $this->setExpectedException('DomainException');
-        $pkey = openssl_pkey_new();
-        $msg = JWT::encode('abc', $pkey, 'RS256');
-        self::$opensslVerifyReturnValue = -1;
-        JWT::decode($msg, $pkey, array('RS256'));
-    }
-}
+        $privateKey = file_get_contents(__DIR__ . '/ecdsa-private.pem');
+        $payload = array('foo' => 'bar');
+        $encoded = JWT::encode($payload, $privateKey, 'ES256');
 
-/*
- * Allows the testing of openssl_verify with an error return value
- */
-function openssl_verify($msg, $signature, $key, $algorithm)
-{
-    if (null !== JWTTest::$opensslVerifyReturnValue) {
-        return JWTTest::$opensslVerifyReturnValue;
+        // Verify decoding succeeds
+        $publicKey = file_get_contents(__DIR__ . '/ecdsa-public.pem');
+        $decoded = JWT::decode($encoded, $publicKey, array('ES256'));
+
+        $this->assertEquals('bar', $decoded->foo);
     }
-    return \openssl_verify($msg, $signature, $key, $algorithm);
 }
